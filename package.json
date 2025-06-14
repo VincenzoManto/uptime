@@ -1,6 +1,6 @@
 {
   "name": "uptime-server",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Libreria per tracciare uptime e incidenti API con dashboard HTML per Express e Fastify",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

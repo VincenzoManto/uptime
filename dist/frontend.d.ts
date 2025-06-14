@@ -1,6 +1,6 @@
-export declare function renderDashboard({ incidents, uptimeRows, avgUptime, endpoints }: {
-    endpoints: any[];
+export declare function renderDashboard({ incidents, uptimeRows, uptimePerDay, uptimePerDayPerEndpoint }: {
+    uptimePerDay: any[];
     incidents: any[];
     uptimeRows: any[];
-    avgUptime: number;
+    uptimePerDayPerEndpoint: any[];
 }): string;

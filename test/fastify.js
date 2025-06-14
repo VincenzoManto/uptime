@@ -4,7 +4,9 @@ const Fastify = require('fastify');
 (async () => {
   await startErrorTracker();
   const app = Fastify();
-  await app.register(errorTrackerFastify);
+  await app.register(errorTrackerFastify, {
+    pingInterval: 10000,
+  });
   app.get('/err', async () => {
     throw new Error('Test error');
   });

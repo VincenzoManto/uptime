@@ -26,20 +26,15 @@ async function startErrorTracker() {
     // Ping routes every 1 minutes
 }
 // Express middleware
-function errorTrackerExpress(route = '/status') {
+function errorTrackerExpress(route = '/status', opts = {}) {
     const router = express_1.default.Router();
     const routes = router.stack;
-    pingRoutes(routes.map((r) => ({ endpoint: r.route.path })));
+    pingRoutes(routes.map((r) => ({ endpoint: r.route.path }), opts.pingInterval));
     router.get(route, async (_req, res) => {
         const db = (0, db_1.getDb)();
-        const incidents = await db.all('SELECT * FROM errors ORDER BY timestamp DESC LIMIT 10');
-        const uptimeRows = await db.all('SELECT * FROM uptime ORDER BY day DESC LIMIT 2000');
-        const avgUptime = uptimeRows.length ? uptimeRows.reduce((a, b) => a + b.up_seconds, 0) / uptimeRows.length : 0;
-        const endpoints = router.stack
-            .filter((r) => r.route && r.route.path && r.route.methods.get)
-            .map((r) => r.route.path)
-            .filter((path) => path !== route);
-        res.send((0, frontend_1.renderDashboard)({ incidents, uptimeRows, avgUptime, endpoints }));
+        const dashboard = await callDashboard(db);
+        res.type('text/html');
+        res.send(dashboard);
     });
     return [
         async (err, req, _res, next) => {
@@ -55,24 +50,28 @@ exports.errorTrackerFastify = (0, fastify_plugin_1.default)(async (fastify, opts
     const route = opts.route || '/status';
     const db = (0, db_1.getDb)();
     const { recordMessage, recordStack } = opts;
+    let pingging = {};
     fastify.addHook('onRoute', (routeOptions) => {
-        pingRoutes([{ endpoint: routeOptions.url }]);
+        if (routeOptions.url === route) {
+            return;
+        }
+        if (pingging[routeOptions.url]) {
+            return;
+        }
+        pingRoutes([{ endpoint: routeOptions.url }], opts.pingInterval);
+        pingging[routeOptions.url] = true;
     });
     fastify.setErrorHandler(async (error, request, reply) => {
         await db.run('INSERT INTO errors (message, stack, endpoint) VALUES (?, ?, ?)', recordMessage ? error.message : 'API failing to respond', recordStack ? error.stack : 'No stack trace available', request.url);
         reply.send(error);
     });
     fastify.get(route, async (_request, reply) => {
-        const incidents = await db.all('SELECT * FROM errors ORDER BY timestamp DESC LIMIT 10');
-        const uptimeRows = await db.all('SELECT * FROM uptime ORDER BY day DESC LIMIT 2000');
-        const avgUptime = uptimeRows.length ? uptimeRows.reduce((a, b) => a + b.up_seconds, 0) / uptimeRows.length : 0;
-        const failedEndpoints = await db.all('SELECT endpoint FROM errors GROUP BY endpoint');
-        const endpoints = failedEndpoints.map((row) => row.endpoint).filter((ep) => ep !== route);
-        console.log('Endpoints:', endpoints);
-        reply.type('text/html').send((0, frontend_1.renderDashboard)({ incidents, uptimeRows, avgUptime, endpoints }));
+        const dashboard = await callDashboard(db);
+        reply.type('text/html').send(dashboard);
     });
 });
-function pingRoutes(routes) {
+function pingRoutes(routes, interval = 15 * 6000) {
+    console.log(`Pinging routes every ${interval / 1000} seconds...`);
     setInterval(async () => {
         const db = (0, db_1.getDb)();
         for (const route of routes) {
@@ -87,7 +86,7 @@ function pingRoutes(routes) {
                 const day = new Date().toISOString().slice(0, 10);
                 await db.run(`
                     INSERT INTO uptime(day, up_seconds, latency, endpoint_id)
-                    VALUES (?, 0, ?, ?)
+                    VALUES (?, ${interval / 1000}, ?, ?)
                 `, day, latency, route.endpoint);
                 console.log(`Pinged ${route.endpoint} successfully in ${latency}ms`);
             }
@@ -95,5 +94,14 @@ function pingRoutes(routes) {
                 await db.run('INSERT INTO errors (message, stack, endpoint, type) VALUES (?, ?, ?, ?)', error.message, error.stack || 'No stack trace available', route.endpoint, 'ping');
             }
         }
-    }, 6000 * 1000); // 15 minutes
+    }, interval);
+}
+async function callDashboard(db) {
+    const incidents = await db.all('SELECT * FROM errors ORDER BY timestamp DESC LIMIT 10');
+    const uptimeRows = await db.all('SELECT * FROM uptime ORDER BY day ASC LIMIT 2000');
+    const uptimePerDay = await db.all('SELECT day, SUM(up_seconds) as total_up_seconds, SUM(latency) as latency FROM uptime GROUP BY day ORDER BY day ASC LIMIT 100');
+    const uptimePerDayPerEndpoint = await db.all('SELECT day, endpoint_id, SUM(up_seconds) as total_up_seconds, AVG(latency) as latency FROM uptime GROUP BY day, endpoint_id HAVING day >= date("now", "-30 days") ORDER BY day ASC');
+    const endpoints = [...new Set(uptimeRows.map((row) => row.endpoint_id))];
+    console.log('Endpoints:', endpoints);
+    return (0, frontend_1.renderDashboard)({ incidents, uptimeRows, uptimePerDayPerEndpoint, uptimePerDay });
 }

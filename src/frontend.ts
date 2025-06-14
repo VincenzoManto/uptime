@@ -1,6 +1,13 @@
-export function renderDashboard({ incidents, uptimeRows, avgUptime, endpoints }: { endpoints: any[]; incidents: any[]; uptimeRows: any[]; avgUptime: number }) {
-  const days = uptimeRows.map((r) => r.day);
-  const upSeconds = uptimeRows.map((r) => Math.round(r.up_seconds / 3600));
+export function renderDashboard({ incidents, uptimeRows, uptimePerDay, uptimePerDayPerEndpoint }: 
+  { uptimePerDay: any[]; incidents: any[]; uptimeRows: any[]; uptimePerDayPerEndpoint: any[] }) {
+  const avgUptime = uptimeRows.length ? uptimeRows.reduce((a, b) => a + b.up_seconds, 0) / (uptimePerDay.length * 86400) : 0;
+  const rowsGroupedByEndpoint = uptimePerDayPerEndpoint.reduce((acc: any, row: any) => {
+    if (!acc[row.endpoint_id]) {
+      acc[row.endpoint_id] = [];
+    }
+    acc[row.endpoint_id].push(row);
+    return acc;
+  }, {});
   // general card saying how we are now (last 15min by #incidents)
   const nIncidents = incidents.filter((i) => {
     const incidentDate = new Date(i.timestamp);
@@ -65,35 +72,43 @@ export function renderDashboard({ incidents, uptimeRows, avgUptime, endpoints }:
         </div></div></div></div>
 
       <div class="flex flex-col gap-3">
-        ${endpoints
+        ${Object.keys(rowsGroupedByEndpoint)
           .map(
-            (endpoint) => `
+            (endpoint) => {
+              const last = rowsGroupedByEndpoint[endpoint]?.reverse()?.[0];
+              const uptimePerc = last?.up_seconds ? (last.up_seconds / 86400) * 100 : 0;
+              return `
           <div class="card rounded-2xl p-4 shadow-xl border border-border my-3">
-            <h6 class="text-lg font-semibold mb-2">${endpoint}</h6>
-            <div class="grid gap-1 text-xs" style="grid-template-columns: repeat(100, 1fr);">
-              ${uptimeRows
-                .filter((row) => row.endpoint_id === endpoint)
+            <h6 class="text-lg font-semibold mb-2">${endpoint?.replace(/[\/_](\w)/g, (r,b) => {
+              return ' ' + b.toUpperCase();
+            })?.trim()}
+            <span class="text-xs opacity-50 float-right">${last?.latency?.toFixed(2)} ms - ${uptimePerc.toFixed(2)}% uptime</span>
+            </h6>
+            <div class="grid gap-1 text-xs" style="grid-template-columns: repeat(200, 1fr);">
+              ${rowsGroupedByEndpoint[endpoint]
                 .map((row: any) => {
-                    const up = row.latency || 10000;
+                    const up = row.latency >= 0 ? row.latency : 10000;
                   const color = up < 2000 ? 'bg-green-500' : up < 4000 ? 'bg-yellow-400' : 'bg-red-500';
                   return `<div class="h-3 w-1 rounded ${color}" title="${row.day}: ${up}ms uptime"></div>`;
                 })
                 .join('')}
             </div>
           </div>
-        `
+        `}
           )
           .join('')}
       </div>
 
-      <div class="flex flex-col md:flex-row items-center justify-between mt-10 gap-3">
+      <div class="flex flex-col md:flex-row justify-between mt-10 gap-3">
         <div class="w-full md:w-1/2 card rounded-2xl p-6 shadow-xl border border-border h-full">
           <h5 class="text-lg font-semibold mb-2">Uptime History</h5>
-          <div class="grid gap-1 text-xs" style="grid-template-columns: repeat(50, 1fr);">
-            ${days
+          <div class="grid gap-1 text-xs" style="grid-template-columns: repeat(100, 1fr);">
+            ${uptimePerDay
               .map(
-                (day, index) => `
-              <div class="h-3 w-1 rounded bg-gray-700" title="${day}: ${upSeconds[index]}h"></div>
+                (uptime, index) => `
+              <div class="h-3 w-1 rounded ${
+                uptime.total_up_seconds > 86400 ? 'bg-green-500' : uptime.total_up_seconds > 43200 ? 'bg-yellow-400' : 'bg-red-500'
+              }" title="${uptime.day}: ${uptime.total_up_seconds.toFixed(2)}s"></div>
             `
               )
               .join('')}
@@ -103,10 +118,13 @@ export function renderDashboard({ incidents, uptimeRows, avgUptime, endpoints }:
         <div class="w-full md:w-1/2 mt-6 md:mt-0 card rounded-2xl p-6 shadow-xl border border-border">
           <h5 class="text-lg font-semibold mb-2">Recent Incidents</h5>
           <ul class="pl-5 opacity-50">
-            ${incidents.slice(0, 5)
-              .map(
-                (incident) => `
-              <li>${new Date(incident.timestamp).toLocaleString()}: ${incident.message}</li>
+          ${incidents.slice(0, 5)
+            .map(
+              (incident) => `
+              <li>
+              
+              <img width="16" height="16" src="https://img.icons8.com/fluency/48/high-priority--v1.png" class="inline mr-2"/>
+              ${new Date(incident.timestamp).toLocaleString()}: ${incident.message}</li>
             `
               )
               .join('')}
@@ -116,7 +134,7 @@ export function renderDashboard({ incidents, uptimeRows, avgUptime, endpoints }:
 
 
       <div class="mt-10 text-center opacity-50 text-sm">
-        <p>Daily average uptime: <span class="font-bold">${avgUptime.toFixed(2)}%</span></p>
+        <p>Daily average uptime: <span class="font-bold">${(avgUptime * 100).toFixed(2)}%</span></p>
         <p>Incidents: <span class="font-bold">${incidents.length}</span></p>
       </div>
     </div>

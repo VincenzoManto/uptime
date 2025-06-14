@@ -74,7 +74,7 @@ export const errorTrackerFastify = fastifyPlugin(async (fastify, opts: any) => {
     const uptimeRows = await db.all('SELECT * FROM uptime ORDER BY day DESC LIMIT 2000');
     const avgUptime = uptimeRows.length ? uptimeRows.reduce((a, b) => a + b.up_seconds, 0) / uptimeRows.length : 0;
     const failedEndpoints = await db.all('SELECT endpoint FROM errors GROUP BY endpoint');
-    const endpoints = failedEndpoints.map((row: any) => row.endpoint).filter((ep: string) => ep !== route);
+    const endpoints = [...new Set(uptimeRows.map((row: any) => row.endpoint_id))];
     console.log('Endpoints:', endpoints);
     reply.type('text/html').send(renderDashboard({ incidents, uptimeRows, avgUptime, endpoints }));
   });

@@ -71,7 +71,7 @@ export function renderDashboard({ incidents, uptimeRows, uptimePerDay, uptimePer
       ${whatWeAreNowDesc}
         </div></div></div></div>
 
-      <div class="flex flex-col gap-3">
+      <div class="grid grid-cols-2 gap-3">
         ${Object.keys(rowsGroupedByEndpoint)
           .map(
             (endpoint) => {
@@ -79,12 +79,12 @@ export function renderDashboard({ incidents, uptimeRows, uptimePerDay, uptimePer
               const uptimePerc = last?.up_seconds ? (last.up_seconds / 86400) * 100 : 0;
               return `
           <div class="card rounded-2xl p-4 shadow-xl border border-border my-3">
-            <h6 class="text-lg font-semibold mb-2">${endpoint?.replace(/[\/_](\w)/g, (r,b) => {
-              return ' ' + b.toUpperCase();
-            })?.trim()}
+            <h6 class="text-lg font-semibold mb-2">${endpoint?.replace(/[\/](.)/g, (r,b) => {
+              return ' > ' + b.toUpperCase();
+            }).replace(/_/g, ' ')?.trim()}
             <span class="text-xs opacity-50 float-right">${last?.latency?.toFixed(2)} ms - ${uptimePerc.toFixed(2)}% uptime</span>
             </h6>
-            <div class="grid gap-1 text-xs" style="grid-template-columns: repeat(200, 1fr);">
+            <div class="grid gap-1 text-xs" style="grid-template-columns: repeat(100, 1fr);">
               ${rowsGroupedByEndpoint[endpoint]
                 .map((row: any) => {
                     const up = row.latency >= 0 ? row.latency : 10000;

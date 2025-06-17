@@ -20,6 +20,10 @@ export async function startErrorTracker() {
         `,
       day
     );
+    // clean up old data (older than 30 days)
+    await db.run('DELETE FROM uptime WHERE day < date("now", "-30 days")');
+    await db.run('DELETE FROM errors WHERE timestamp < date("now", "-30 days")');
+    console.log('Cleaned up old data');
   }, 60000);
 
   // Ping routes every 1 minutes
